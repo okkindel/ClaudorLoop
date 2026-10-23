@@ -24,6 +24,8 @@ The suite covers both host directions, Cursor plan-mode/resume argument construc
 | Unknown `--model` | 2026.10.01 | Exit 1 with the available-model list |
 | Hardened runner, round 1: plan that deletes the only backup before copying | 2026.10.22, `grok-4.7-high` | REVISE in 316 s; delete-before-copy data loss found as high, plus missing destination directory (high) and four lesser findings. 10 read/glob/grep calls; its one shell attempt got `permissionDenied`. Observed "Grok 4.7 256K High", `independence: verified` |
 | Hardened runner, round 2: `--resume` with the revised plan and dispositions | 2026.10.22, `grok-4.7-high` | Same session UUID and private config dir. REVISE in 723 s: acknowledged the fixes and found new real defects (passing the `NamedTemporaryFile` object to `os.replace`, a test patch that Linux `sendfile` bypasses, `makedirs` before the missing-source check, no directory fsync). 15 read/glob/grep calls, no shell. Fixture repo unchanged apart from the host's plan edit |
+| Installed plugin, plan mode, `composer-2.5` | 2026.10.22 | **Failed**: Composer called plan mode's `createPlan` tool, which ended the turn without the JSON answer. Reviewers now use `--mode ask` |
+| `--mode ask` with the private deny config, twice | 2026.10.22, `composer-2.5` | Both valid REVISE JSON with the seeded defect as high; no shell, no file changes |
 | Earlier round 2 with `--timeout 500` | 2026.10.22, `grok-4.7-high` | Timed out while still working; recorded as failed. Cursor's default timeout is now 1200 s |
 
 ## Model comparison (same fixture, same two plans)
@@ -44,7 +46,7 @@ These checks exercise transport, permission boundaries and obvious-defect detect
 
 - Project-level Cursor hooks cannot be disabled per call and still fire in reviewer and builder runs.
 - One fixture and one run per model: the comparison below shows speed and recall on these plans, not a general ranking.
-- Plan mode does not govern MCP tools; the runner refuses Cursor reviews while servers are configured unless explicitly allowed.
+- The deny rules do not govern MCP tools; the runner refuses Cursor reviews while servers are configured unless explicitly allowed.
 - The observed Cursor model is a display name from the client's init event, not a server confirmation.
 - Windows and macOS were not live-tested with Cursor; a Cursor batch shim on Windows is refused rather than launched through a shell.
 - Claude adapter behaviour is inherited from upstream claudex-loop; it was not re-validated live here.

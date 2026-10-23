@@ -156,7 +156,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_cursor_resume_keeps_plan_mode_and_explicit_session(self):
         args = runner.command("cursor", "review", self.root, "grok-4.7-high", session=SESSION)
-        self.assertEqual(args[args.index("--mode") + 1], "plan")
+        self.assertEqual(args[args.index("--mode") + 1], "ask")
         self.assertNotIn("--sandbox", args)  # it auto-runs commands in a writable sandbox
         self.assertEqual(args[args.index("--resume") + 1], SESSION)
         self.assertNotIn("--continue", args)
@@ -415,7 +415,7 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("repository root", error)
 
     def test_cursor_review_refuses_configured_mcp_unless_allowed(self):
-        # Plan mode blocks edits and shell, not MCP tools.
+        # The deny config blocks shell and writes, not MCP tools.
         env = {"FAKE_MCP": "github: npx github-mcp (enabled)"}
         code, record, _, _ = self.invoke(env=env)
         self.assertEqual((code, record["status"]), (1, "failed"))

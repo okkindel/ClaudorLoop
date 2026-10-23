@@ -28,7 +28,7 @@ CURSOR_MODEL_ENV = "CLAUDOR_CURSOR_MODEL"
 # reviewing Claude. Router aliases hide the model actually used.
 ANTHROPIC_MODEL = re.compile(r"claude|sonnet|opus|haiku|fable", re.I)
 ROUTER_MODELS = ("auto", "default")
-# Plan mode alone lets commands it judges read-only run (and --sandbox auto-runs them in a
+# Read-only modes alone let commands judged read-only run (and --sandbox auto-runs them in a
 # workspace-writable sandbox), so reviewers get a private config that denies shell and writes.
 REVIEW_PERMISSIONS = {"allow": [], "deny": ["Shell(*)", "Write(**)"]}
 TIMEOUTS = {"claude": 600, "cursor": 1200}
@@ -181,7 +181,7 @@ def validate_review(value) -> dict:
 def cursor_mcp_servers(prefix: list[str], repo: Path, env=None) -> str | None:
     """Return Cursor's MCP listing when any server is configured, else None.
 
-    Plan mode blocks edits and shell, but MCP tools act outside it. The listing format
+    The deny config blocks shell and writes, but MCP tools act outside it. The listing format
     is not a stable API, so anything except the explicit empty message counts as configured.
     """
     probe = subprocess.run(prefix + ["mcp", "list"], cwd=repo, stdin=subprocess.DEVNULL,
@@ -221,8 +221,9 @@ def command(provider: str, mode: str, run_dir: Path, model=None, effort=None,
         # stream-json carries the init event that names the model actually used.
         args = ["-p", "--output-format", "stream-json", "--trust"]
         if review:
-            # Never --sandbox here: it auto-runs commands in a workspace-writable sandbox.
-            args += ["--mode", "plan"]
+            # Ask mode: read-only Q&A. Plan mode has a create-plan tool that can end the turn
+            # before the JSON answer. Never --sandbox: it auto-runs commands in a writable sandbox.
+            args += ["--mode", "ask"]
         # Builds keep the user's permissions: no --force, so shell commands outside the
         # allowlist are refused and reported rather than silently run.
         if session:
@@ -477,7 +478,7 @@ def run(args) -> int:
             servers = cursor_mcp_servers(prefix, repo, env)
             record["cursor_mcp_servers"] = servers
             if servers and not args.allow_cursor_mcp:
-                raise RunError("Cursor has MCP servers configured and plan mode does not govern them. "
+                raise RunError("Cursor has MCP servers configured and the reviewer config does not govern them. "
                                "Remove them, or pass --allow-cursor-mcp to accept and record the risk.")
         argv = prefix + command(provider, args.mode, run_dir, args.model, args.effort,
                                 previous["session_id"] if previous else None)

@@ -109,7 +109,7 @@ export CLAUDOR_CURSOR_MODEL=grok-4.7-medium
 
 When Cursor is the builder, it runs without `--force`, so shell commands such as tests run only if allowed in `~/.cursor/cli-config.json`, e.g. `"permissions": {"allow": ["Shell(npm)", "Shell(python3)"]}`. Otherwise the builder reports them as refused and the host runs the proof itself.
 
-Cursor reviews refuse to start while Cursor MCP servers are configured (`agent mcp list`), because plan mode does not restrict MCP tools. Remove them or pass `--allow-cursor-mcp` knowingly.
+Cursor reviews refuse to start while Cursor MCP servers are configured (`agent mcp list`), because the reviewer's shell/write deny rules do not cover MCP tools. Remove them or pass `--allow-cursor-mcp` knowingly.
 
 ### 4. Smoke test
 
@@ -151,7 +151,7 @@ The runner validates a successful CLI turn and a structured review; an empty out
 
 A clean structured result does not prove the model is right. Zero findings is valid; a large number of findings is not a quality score. `BLOCKED`, execution failures and exhausted round budgets are surfaced rather than converted to approval.
 
-Cursor reviews run in plan mode with a private Cursor config that denies all shell commands and writes (plan mode alone lets some commands through), and refuse to start while Cursor MCP servers are configured unless `--allow-cursor-mcp` is passed. Claude reviews expose only file reading/search, with customizations disabled and no MCP tools. Cursor builders never get `--force`: shell commands outside your Cursor allowlist are refused and reported. Delegated builds require a clean checkout. Details: [runtime reference](skills/claudor-loop/references/runtime.md).
+Cursor reviews run in read-only ask mode with a private Cursor config that denies all shell commands and writes (the read-only modes alone let some commands through), and refuse to start while Cursor MCP servers are configured unless `--allow-cursor-mcp` is passed. Claude reviews expose only file reading/search, with customizations disabled and no MCP tools. Cursor builders never get `--force`: shell commands outside your Cursor allowlist are refused and reported. Delegated builds require a clean checkout. Details: [runtime reference](skills/claudor-loop/references/runtime.md).
 
 ## Development and verification
 

@@ -19,8 +19,10 @@ import uuid
 
 PROVIDERS = ("claude", "cursor")
 EXECUTABLES = {"claude": ("claude",), "cursor": ("cursor-agent", "agent")}
-# Grok 4.7 is in Cursor's included pool; override per machine with CLAUDOR_CURSOR_MODEL.
-DEFAULT_CURSOR_MODEL = "grok-4.7-high"
+# Both are in Cursor's included pool. Composer keeps review rounds and builds fast; the final
+# code inspection gets Grok 4.7 High, which found subtler defects live. CLAUDOR_CURSOR_MODEL
+# overrides every mode.
+DEFAULT_CURSOR_MODELS = {"review": "composer-2.5", "build": "composer-2.5", "inspect": "grok-4.7-high"}
 CURSOR_MODEL_ENV = "CLAUDOR_CURSOR_MODEL"
 # Cursor can route to Anthropic models, which would make "independent" review Claude
 # reviewing Claude. Router aliases hide the model actually used.
@@ -93,12 +95,13 @@ def cli_prefix(provider: str, override: str | None = None) -> list[str]:
     return [str(path)]
 
 
-def resolve_model(provider: str, model: str | None, allow_router: bool = False) -> tuple[str | None, str]:
+def resolve_model(provider: str, mode: str, model: str | None,
+                  allow_router: bool = False) -> tuple[str | None, str]:
     """Return the model to request and where it came from; Claude keeps its CLI default."""
     if provider != "cursor":
         return model, "argument" if model else "CLI default (unresolved)"
     source = "argument" if model else "env" if os.environ.get(CURSOR_MODEL_ENV) else "default"
-    model = model or os.environ.get(CURSOR_MODEL_ENV) or DEFAULT_CURSOR_MODEL
+    model = model or os.environ.get(CURSOR_MODEL_ENV) or DEFAULT_CURSOR_MODELS[mode]
     if ANTHROPIC_MODEL.search(model):
         raise RunError(f"Cursor model {model} is an Anthropic model; the Cursor side must not be Claude. "
                        "Choose e.g. grok-4.7-high, composer-2.5 or a GPT model.")
@@ -392,7 +395,7 @@ def run(args) -> int:
         check_approval(json.loads(Path(args.approval).read_text(encoding="utf-8")), plan, repo, plan_body)
         print("Approval matches the current plan.")
         return 0
-    args.model, model_source = resolve_model(provider, args.model, args.allow_unverified_model)
+    args.model, model_source = resolve_model(provider, args.mode, args.model, args.allow_unverified_model)
     if args.mode == "inspect" and (not args.base or args.resume):
         raise RunError("Inspection requires --base and a fresh session (no --resume).")
     previous = (previous_record(Path(args.resume), repo, plan, provider, args.mode,
@@ -515,7 +518,8 @@ def main(argv=None) -> int:
     parser.add_argument("--repo", default=".")
     parser.add_argument("--plan", default="PLAN.md")
     parser.add_argument("--model", help="Explicit model override. Omitted: Claude uses its CLI default; "
-                        f"Cursor uses ${CURSOR_MODEL_ENV} or {DEFAULT_CURSOR_MODEL}.")
+                        f"Cursor uses ${CURSOR_MODEL_ENV}, else composer-2.5 (review, build) "
+                        "or grok-4.7-high (inspect).")
     parser.add_argument("--allow-unverified-model", action="store_true",
                         help="Allow a Cursor router model (auto) whose actual model cannot be verified.")
     parser.add_argument("--allow-cursor-mcp", action="store_true",

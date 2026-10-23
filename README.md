@@ -43,8 +43,8 @@ flowchart LR
 
 Cursor can run many models, including Anthropic ones, so claudor-loop guards the "independent" part:
 
-- **Default:** `grok-4.7-high`. Grok 4.5–4.7 and Composer 2.5 are in Cursor's included usage pool; most other models draw paid usage.
-- **Your own default:** `export CLAUDOR_CURSOR_MODEL=composer-2.5` (or any id from `agent models`). Per run: `reviewer_model=`, `builder_model=`, `inspector_model=`.
+- **Defaults:** `composer-2.5` for plan-review rounds and builds, `grok-4.7-high` for the final code inspection. Both are in Cursor's included usage pool; most other models draw paid usage. Live, Composer found the seeded defects in ~1 minute per round; Grok 4.7 High took 5–12 minutes but caught subtler bugs Composer missed (see [VALIDATION.md](VALIDATION.md)). For a consequential plan, use `reviewer_model=grok-4.7-high`.
+- **Your own default:** `export CLAUDOR_CURSOR_MODEL=grok-4.7-medium` (any id from `agent models`; applies to every role). Per run: `reviewer_model=`, `builder_model=`, `inspector_model=`.
 - **Effort** is part of the Cursor model id (`grok-4.7-medium`, `grok-4.7-xhigh`); `*_effort` applies only to Claude.
 - **Anthropic models are refused** on the Cursor side, before launch and again if Cursor reports one: Claude reviewing Claude is not a second opinion.
 - **`auto`** hides which model actually ran. It requires `--allow-unverified-model`, and results are recorded as `independence: unverified`.
@@ -103,8 +103,8 @@ Copy all skill directories together: the compatibility commands share the runtim
 ### 3. Optional configuration
 
 ```bash
-# Default Cursor model (otherwise grok-4.7-high); list ids with `agent models`
-export CLAUDOR_CURSOR_MODEL=composer-2.5
+# One Cursor model for every role (otherwise composer-2.5, and grok-4.7-high for inspection)
+export CLAUDOR_CURSOR_MODEL=grok-4.7-medium
 ```
 
 When Cursor is the builder, it runs without `--force`, so shell commands such as tests run only if allowed in `~/.cursor/cli-config.json`, e.g. `"permissions": {"allow": ["Shell(npm)", "Shell(python3)"]}`. Otherwise the builder reports them as refused and the host runs the proof itself.
@@ -124,7 +124,7 @@ prints the role table (Claude plans and builds, Cursor reviews and inspects) wit
 ```text
 claudor this feature — plan and implement it
 claudor this plan, mode=review, plan=docs/migration.md, rounds=3
-claudor this feature, builder=cursor, builder_model=composer-2.5
+claudor this feature, builder=cursor, builder_model=grok-4.7-high
 claudor this feature, reviewer_model=grok-4.7-xhigh
 ```
 
@@ -136,7 +136,7 @@ claudor this feature, reviewer_model=grok-4.7-xhigh
 | `plan` / `PLAN_FILE` | `PLAN.md` | Plan path, carried through every phase |
 | `log` / `LOG_FILE` | `PLAN-REVIEW-LOG.md` | Append-only decision log |
 | `builder` | current host | `claude` or `cursor` |
-| `reviewer_model`, `builder_model`, `inspector_model` | Cursor: `$CLAUDOR_CURSOR_MODEL` or `grok-4.7-high`; Claude: CLI configuration | Per-role model override |
+| `reviewer_model`, `builder_model`, `inspector_model` | Cursor: `$CLAUDOR_CURSOR_MODEL`, else `composer-2.5` (review, build) / `grok-4.7-high` (inspect); Claude: CLI configuration | Per-role model override |
 | `reviewer_effort`, `builder_effort`, `inspector_effort` | Claude CLI configuration | Claude only; Cursor effort is in the model id |
 | `rounds` / `MAX_ROUNDS` | `5` | Completed plan-review round cap |
 | `MAX_FIX_ROUNDS` | `2` | Build-fix attempt cap |

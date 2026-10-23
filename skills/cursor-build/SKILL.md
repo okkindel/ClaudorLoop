@@ -7,7 +7,7 @@ description: "Have Cursor agent implement a concrete work order and have Claude 
 
 Compatibility entry point: the builder is explicitly Cursor agent. The shared workflow and executable live in the sibling `claudor-loop` skill; install that skill alongside this one.
 
-Load the shared [build reference](../claudor-loop/references/build.md) and [runtime reference](../claudor-loop/references/runtime.md). Preserve `SPEC_FILE` (mapped to the runner's `--plan`), `LOG_FILE`, `PROOF_CMD`, `MAX_FIX_ROUNDS`, and an explicit `builder_model` (default `$CLAUDOR_CURSOR_MODEL` or `grok-4.7-high`; Composer 2.5 is a cheaper choice for well-specified work). The spec may have any filename; never substitute PLAN.md silently.
+Load the shared [build reference](../claudor-loop/references/build.md) and [runtime reference](../claudor-loop/references/runtime.md). Preserve `SPEC_FILE` (mapped to the runner's `--plan`), `LOG_FILE`, `PROOF_CMD`, `MAX_FIX_ROUNDS`, and an explicit `builder_model` (default `$CLAUDOR_CURSOR_MODEL` or `composer-2.5`; `grok-4.7-high` for harder work). The spec may have any filename; never substitute PLAN.md silently.
 
 - In Claude Code, Claude coordinates and delegates implementation to Cursor through the runner's `build --host claude --builder cursor` path. Claude then inspects all changes and independently runs proof checks. Log evidence and limitations. A fresh Claude CLI inspector is also available through the shared runner if useful.
 - In Cursor, implement in the current host session with its normal tools, then use a fresh Claude inspector through `inspect --host cursor --builder cursor`. Do not ask Cursor to certify its own changes as independent review.

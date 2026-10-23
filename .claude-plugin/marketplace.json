@@ -1,14 +1,14 @@
 {
-  "name": "claudex-loop",
+  "name": "claudor-loop",
   "owner": {
-    "name": "Chase AI",
-    "url": "https://youtube.com/@chaseai"
+    "name": "okkindel",
+    "url": "https://github.com/okkindel"
   },
   "plugins": [
     {
-      "name": "claudex-loop",
+      "name": "claudor-loop",
       "source": "./",
-      "description": "Standalone model routing and one-off handoffs with Claudex Route, plus the full Claudex Loop planning, build and review workflow."
+      "description": "Claude Code <-> Cursor agent: standalone model routing and one-off handoffs with Claudor Route, plus the full Claudor Loop planning, build and independent cross-review workflow."
     }
   ]
 }

@@ -1,3 +1,5 @@
+> Inherited from upstream [chaseai-yt/claudex-loop](https://github.com/chaseai-yt/claudex-loop). PR numbers below refer to that repository.
+
 # Community contributions and PR reconciliation
 
 The bidirectional workflow in [PR #16](https://github.com/chaseai-yt/claudex-loop/pull/16) was informed by concrete reports and proposed fixes from the contributors below. These contributions identified installation failures, review gaps and operational problems that the new workflow addresses.

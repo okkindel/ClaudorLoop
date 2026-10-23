@@ -1,6 +1,6 @@
 # Build and final inspection
 
-Resolve the shared runner from the installed claudex-loop skill. Keep the spec and run artifacts available to both providers. Preserve user-selected toolchains and carry exact acceptance criteria and proof commands into the build.
+Resolve the shared runner from the installed claudor-loop skill. Keep the spec and run artifacts available to both providers. Preserve user-selected toolchains and carry exact acceptance criteria and proof commands into the build.
 
 ## Preparation
 
@@ -11,11 +11,11 @@ The runner requires a clean checkout for delegated builds. Plan/log files writte
 ## Delegated build
 
 ```text
-python RUNNER build --host claude --builder codex --repo PROJECT --plan PLAN_PATH --approval APPROVED_RESULT --proof "python -m unittest discover"
-python RUNNER build --host codex --builder claude --repo PROJECT --plan PLAN_PATH --approval APPROVED_RESULT --proof "npm test"
+python RUNNER build --host claude --builder cursor --repo PROJECT --plan PLAN_PATH --approval APPROVED_RESULT --proof "python -m unittest discover"
+python RUNNER build --host cursor --builder claude --repo PROJECT --plan PLAN_PATH --approval APPROVED_RESULT --proof "npm test"
 ```
 
-Codex builds with `workspace-write` and noninteractive approvals, not a global sandbox bypass. Claude builds with its normal configured permissions and `acceptEdits`; commands still requiring approval are denied in headless mode. Confirm any required proof-command permissions using the provider's supported configuration before launch. Never respond to a denial by silently turning on permission bypass. If the external builder cannot perform required work, report it or have the already-authorized host perform that portion and log authorship.
+Cursor builds with `agent -p` and the user's own permissions, never `--force`: file edits are allowed, shell commands outside the `permissions.allow` list in `~/.cursor/cli-config.json` (e.g. `Shell(npm)`) are refused. Claude builds with its normal configured permissions and `acceptEdits`; commands still requiring approval are denied in headless mode. Confirm any required proof-command permissions using the provider's supported configuration before launch. Never respond to a denial by silently turning on permission bypass. If the external builder cannot perform required work, report it or have the already-authorized host perform that portion and log authorship.
 
 For an explicitly requested standalone work order without plan review, replace `--approval` with `--unreviewed-spec`; record the missing review. This does not waive independent inspection of the final code.
 
@@ -26,8 +26,8 @@ Use `--resume PREVIOUS_BUILD_RESULT --feedback FIX_LIST` for fixes. The clean-ch
 Read all changes relative to the pre-build commit, including staged changes, deletions, binary assets and untracked files. For changed tests, check that assertions express the acceptance criteria or valid regressions rather than merely confirming whatever the implementation happens to do. Existing necessary regression tests need not correspond to a new spec sentence. Run the agreed proof commands yourself, and add relevant manual/visual verification when the deliverable calls for it.
 
 ```text
-python RUNNER inspect --host claude --builder codex --repo PROJECT --plan PLAN_PATH --base BASE_COMMIT
-python RUNNER inspect --host codex --builder claude --repo PROJECT --plan PLAN_PATH --base BASE_COMMIT
+python RUNNER inspect --host claude --builder cursor --repo PROJECT --plan PLAN_PATH --base BASE_COMMIT
+python RUNNER inspect --host cursor --builder claude --repo PROJECT --plan PLAN_PATH --base BASE_COMMIT
 ```
 
 The runner supplies the tracked diff plus a manifest of all changed and untracked files. The reviewer must open added files. It fingerprints the inspected state and refuses approval if code changes during inspection. Ignored files are not enumerated by Git: inspect any ignored build deliverables separately. Changed submodules require an explicit inspection path rather than a silently incomplete diff.

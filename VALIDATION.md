@@ -1,43 +1,40 @@
-# Validation — bidirectional loop
+# Validation — Claude Code ↔ Cursor agent
 
-Development date: 2026-09-06. Tests run in disposable fixtures; production repositories were not built or modified by live smoke tests.
+Date: 2026-10-23, Linux. Live checks ran in disposable fixtures; no production repository was built or modified.
 
 ## Automated checks
 
-- `python scripts/validate.py`: active skill frontmatter, local references, both provider manifests and shared-runner presence.
-- `python -m unittest discover -s tests -v`: **23 passing tests** with fake CLI executables and real temporary Git repositories, without model calls.
-- Codex Skill Creator validator: all three active skills.
-- Codex Plugin Creator validator: `.codex-plugin/plugin.json`.
+- `python scripts/validate.py`: active skill frontmatter, local references, Claude and Cursor plugin manifests, shared-runner presence.
+- `python -m unittest discover -s tests -v`: **43 passing tests** with fake CLI executables and real temporary Git repositories, without model calls.
 - `git diff --check`.
 
-The contract suite covers both host directions, explicit model selection, read-only reviewer argument construction, success/failure parsing, malformed/empty/incomplete output, a failed turn following successful output, session identity on resume, timeout handling, plan hash invalidation, staged/untracked/deleted change coverage, inspection invalidation and preservation of unrelated work during build resumption.
+The suite covers both host directions, Cursor plan-mode/resume argument construction (no `--sandbox`), the reviewer's private config denying shell and writes (and its reuse on resume), stream-json parsing (init + result events, failed or missing result, mismatched session), fenced or wrapped JSON replies, the Cursor model policy (default, `$CLAUDOR_CURSOR_MODEL`, explicit override, refused Anthropic models before launch and when reported, `auto` only with `--allow-unverified-model` and recorded as unverified, `--effort` refused), fail-closed handling of configured Cursor MCP servers, and the upstream contract tests: timeouts, plan-hash invalidation, staged/untracked/deleted change coverage, inspection invalidation and build resumption.
 
-GitHub Actions is configured for Windows, macOS and Linux. Local results establish Windows behavior; cross-platform CI results must be checked on the PR before merge.
+## Live checks
 
-## Live model checks
+| Check | CLI | Result |
+|---|---|---|
+| `agent -p --mode plan --sandbox enabled` asked to create a file and run `touch` | 2026.10.01, composer-2.5 | Both refused; no files created |
+| Runner review with `--mode plan --sandbox enabled` (first adapter version) | 2026.10.22, grok-4.7-high | **Reviewer ran `python3 -c ...` shell commands** in a `WORKSPACE_READWRITE` sandbox. Plan mode alone also rejects only commands it judges as writes. Led to the private deny config below |
+| Plan mode, no sandbox flag, `python3 -c "print(6*7)"` | 2026.10.22, composer-2.5 | `rejected` |
+| Private `CURSOR_CONFIG_DIR` with `deny: Shell(*), Write(**)`, with and without `--sandbox enabled` | 2026.10.22, composer-2.5 | `permissionDenied: Command blocked by permissions configuration`; global config unchanged |
+| `agent -p` (no `--force`) asked to create a file and run `touch` | 2026.10.01, composer-2.5 | Edit made; shell command refused. Builders therefore never get `--force` |
+| `--resume SESSION` with a JSON-only instruction | 2026.10.01, composer-2.5 | Same session UUID; bare JSON object in `result` |
+| `--output-format stream-json` | 2026.10.01 | `system/init` event names the model ("Composer 2.5"); `--model auto` reports only "Auto Balance" |
+| Unknown `--model` | 2026.10.01 | Exit 1 with the available-model list |
+| Hardened runner, round 1: plan that deletes the only backup before copying | 2026.10.22, default `grok-4.7-high` | REVISE in 316 s; delete-before-copy data loss found as high, plus missing destination directory (high) and four lesser findings. 10 read/glob/grep calls; its one shell attempt got `permissionDenied`. Observed "Grok 4.7 256K High", `independence: verified` |
+| Hardened runner, round 2: `--resume` with the revised plan and dispositions | 2026.10.22, `grok-4.7-high` | Same session UUID and private config dir. REVISE in 723 s: acknowledged the fixes and found new real defects (passing the `NamedTemporaryFile` object to `os.replace`, a test patch that Linux `sendfile` bypasses, `makedirs` before the missing-source check, no directory fsync). 15 read/glob/grep calls, no shell. Fixture repo unchanged apart from the host's plan edit |
+| Earlier round 2 with `--timeout 500` | 2026.10.22, `grok-4.7-high` | Timed out while still working; recorded as failed. Cursor's default timeout is now 1200 s |
 
-| Check | Result |
-|---|---|
-| Fable 5.1 reviews a deliberately broken backup plan through the Codex-host route | REVISE; identified deletion-before-read data loss; valid structured output, coverage and session UUID |
-| Same Fable session reviews the revised plan | APPROVED with low-priority advice; exact UUID preserved and new plan hash recorded |
-| Astra through npm Codex CLI 0.144.5 | Correctly failed, preserving the server error that this model needs a newer CLI |
-| Astra through app-bundled Codex CLI 0.153.4 | REVISE; independently identified the seeded data-loss defect; valid structured output |
-| Same Astra session reviews the revised plan | APPROVED with zero findings; exact UUID preserved and new plan hash recorded |
-| Approval checks on both revised plans | Passed against the actual plan path and current content |
-| Fable and Astra separately implement a tiny addition work order | Each created only addition.py; existing acceptance-check file unchanged |
-| Host independently runs `python -B check.py` on both implementations | All three acceptance checks passed for each implementation |
-| Fresh Astra inspects Fable's code | APPROVED; new untracked addition.py included in the inspected snapshot |
-| Fresh Fable inspects Astra's code | APPROVED; new untracked addition.py included in the inspected snapshot |
+The Cursor CLI auto-updated from 2026.10.01 to 2026.10.22 during development; each result records the `cli_version` actually used.
 
-Fable runs used Claude Code 2.1.261. The Astra test used an explicit CLI executable path rather than changing the user's global installation. The model selection was explicit in both adapters.
-
-Both delegated builders reported that their proof commands were blocked locally: Claude needed approval in headless mode; Codex's Windows sandbox could not access the Python executable. Neither denial was bypassed. The coordinating host ran the proof independently and observed passing results. A completed build turn is not a verified build; the mandatory host proof step resolved these gaps before final inspection.
-
-The fixture checks exercise transport and obvious-defect detection, not comparative model quality. No claim is made that one pairing is better or that an APPROVED response proves exhaustive correctness. A future benchmark should compare defect recall, false positives, proof results, time and usage on the same tasks, including sound plans.
+These checks exercise transport, permission boundaries and obvious-defect detection, not comparative model quality. An APPROVED response does not prove exhaustive correctness.
 
 ## Limits
 
-- Live review tests were run on Windows. Automated fake-CLI coverage is configured for all three operating systems.
-- CLI versions, account access and permission behavior can change; diagnostics identify the selected executable and requested model.
-- Codex's shell sandbox does not constrain external MCP side effects; review existing tool configuration as described in the runtime reference. Claude's adapter instead removes non-reading tools and MCP from the reviewer.
-- Structured-output validation can reject broken transport and inconsistent verdicts, but cannot prove a model's findings or claimed coverage.
+- Project-level Cursor hooks cannot be disabled per call and still fire in reviewer and builder runs.
+- Grok 4.7 High reviews are slow (5–12 min per round on a two-file fixture); use `grok-4.7-medium` or composer-2.5 when latency matters.
+- Plan mode does not govern MCP tools; the runner refuses Cursor reviews while servers are configured unless explicitly allowed.
+- The observed Cursor model is a display name from the client's init event, not a server confirmation.
+- Windows and macOS were not live-tested with Cursor; a Cursor batch shim on Windows is refused rather than launched through a shell.
+- Claude adapter behaviour is inherited from upstream claudex-loop; it was not re-validated live here.

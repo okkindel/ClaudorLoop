@@ -1,49 +1,28 @@
 <div align="center">
-<img src="assets/logo.svg" alt="CLAUDEX LOOP" width="719">
+<img src="assets/logo.svg" alt="CLAUDOR LOOP" width="719">
 
-### Skills for working across Claude Code and Codex.
+### Skills for working across Claude Code and Cursor agent.
 
-[![Stars](https://img.shields.io/github/stars/chaseai-yt/claudex-loop?style=flat&color=e8590c)](https://github.com/chaseai-yt/claudex-loop/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 </div>
 
-This repository contains separate skills for choosing a model, making a one-off handoff, and running a complete development workflow. They share a repository and plugin distribution; **Claudex Route is independent of the Claudex Loop workflow**.
+A fork of [chaseai-yt/claudex-loop](https://github.com/chaseai-yt/claudex-loop) that swaps Codex for the [Cursor agent CLI](https://cursor.com/docs/cli/overview) (`agent` / `cursor-agent`). One provider plans; the other independently reviews the plan and inspects the final code.
 
 | Skill | Use it for | Dependencies |
 |---|---|---|
-| [`claudex-route`](skills/claudex-route/SKILL.md) | A model recommendation or one scoped handoff | Self-contained; selected CLI needed only for delegation |
-| [`claudex-loop`](skills/claudex-loop/SKILL.md) | Requirements, plan review, implementation, and final inspection | Both CLIs and Python 3.10+ |
-| [`codex-review`](skills/codex-review/SKILL.md) | Explicit Codex plan-review compatibility command | Shared `claudex-loop` skill |
-| [`codex-build`](skills/codex-build/SKILL.md) | Explicit Codex builder compatibility command | Shared `claudex-loop` skill |
+| [`claudor-route`](skills/claudor-route/SKILL.md) | A model recommendation or one scoped handoff | Self-contained; selected CLI needed only for delegation |
+| [`claudor-loop`](skills/claudor-loop/SKILL.md) | Requirements, plan review, implementation, and final inspection | Both CLIs and Python 3.10+ |
+| [`cursor-review`](skills/cursor-review/SKILL.md) | Explicit Cursor plan-review command | Shared `claudor-loop` skill |
+| [`cursor-build`](skills/cursor-build/SKILL.md) | Explicit Cursor builder command | Shared `claudor-loop` skill |
 
-## Claudex Loop
-
-Claudex Loop gives a plan an independent review before implementation, then gives the code an independent inspection. Your current conversation handles requirements and coordination; the other provider challenges the plan with concrete evidence. The host arbitrates findings, records decisions, and keeps the loop bounded.
+## Claudor Loop
 
 | Start here | Requirements and plan | Plan review | Default build | Final inspection |
 |---|---|---|---|---|
-| **Claude Code** | Current Claude session | Codex | Claude | Fresh Codex session |
-| **Codex** | Current Codex session | Claude | Codex | Fresh Claude session |
+| **Claude Code** | Current Claude session | Cursor agent | Claude | Fresh Cursor agent session |
+| **Cursor** | Current Cursor session | Claude | Cursor | Fresh Claude session |
 
-Choose either builder with `builder=claude` or `builder=codex`. The inspector follows the builder choice and always uses the other provider. If the coordinator takes over fixes, those new edits need another independent inspection. With mixed authorship, the log records who wrote and reviewed each part.
-
-Model choices remain configurable. Use **Claude Fable 5.1** and **GPT-6 Astra** when selected and available on your accounts, or retain each CLI's configured model. The host UI selection does not automatically change the other CLI's configuration. Requested and observed model information is recorded separately, and there is no silent model/provider fallback.
-
-## Claudex Route: standalone task routing
-
-Use [`claudex-route`](skills/claudex-route/SKILL.md) when you want help choosing who should handle a task. It recommends a model and a role with a short reason: stay with the current agent, get a second opinion on a plan or implementation, investigate a blocker, or delegate a bounded task. It can perform one handoff when requested. Recommendations alone do not launch another model or authorize edits.
-
-```text
-claudex-route: Who should handle this CSV import feature? Prioritize cost.
-claudex-route: Recommend a second opinion on this plan before we build.
-claudex-route: Pick a suitable model and have it diagnose this failing test read-only.
-```
-
-For example, Luna may suit a focused fixture-generation task, Sol a bounded implementation, and Astra or Fable a difficult review. These are task-fit recommendations, not a fixed ranking; available models, context, verification, and current pricing matter. Staying with your current model is a valid result. Route is a self-contained instruction skill with no Python dependency; a delegated run requires the selected CLI and account access. It does not use the full loop's approval-binding runner.
-
-Claudex Route runs independently. Use **Claudex Loop** when you want repeated plan review, implementation, and independent inspection.
-
-## The Claudex Loop workflow
+Choose either builder with `builder=claude` or `builder=cursor`. The inspector is always the other provider. If the coordinator takes over fixes, those edits need another independent inspection.
 
 ```mermaid
 flowchart LR
@@ -58,60 +37,96 @@ flowchart LR
     I --> H[Present diff and remaining findings]
 ```
 
-1. **Recon:** inspect existing code and relevant docs, or research greenfield assumptions. Present an assumptions ledger with sources.
-2. **Requirements:** resolve decisions that change the outcome. Batch independent questions, preserve user intent, and write a plan with observable acceptance criteria and proof commands.
-3. **Plan review:** the other provider reads the plan and relevant code, returns evidence-backed findings, and revisits revisions in the same session. Stop at the round budget or an explicit verdict: `APPROVED`, `REVISE`, or `BLOCKED`.
-4. **Build and inspect:** once implementation is authorized, the selected builder works from the plan. Independently run proof checks and inspect the final changes with the other provider in a fresh session.
+`PLAN.md` records what to build; `PLAN-REVIEW-LOG.md` records findings, dispositions, models, proof and remaining uncertainty. Both paths are configurable. CLI diagnostics live in a unique directory outside the target checkout.
 
-The user controls consequential decisions and authorization. A request to review a plan does not authorize implementation. A request to plan and implement does not need redundant build approval. Commits, pushes and publication follow the user's existing instructions.
+## Cursor models
 
-`PLAN.md` records what to build; `PLAN-REVIEW-LOG.md` records the findings, dispositions, models, proof and remaining uncertainty. Both paths are configurable. Detailed CLI diagnostics live in a unique directory outside the target checkout.
+Cursor can run many models, including Anthropic ones, so claudor-loop guards the "independent" part:
+
+- **Default:** `grok-4.7-high`. Grok 4.5–4.7 and Composer 2.5 are in Cursor's included usage pool; most other models draw paid usage.
+- **Your own default:** `export CLAUDOR_CURSOR_MODEL=composer-2.5` (or any id from `agent models`). Per run: `reviewer_model=`, `builder_model=`, `inspector_model=`.
+- **Effort** is part of the Cursor model id (`grok-4.7-medium`, `grok-4.7-xhigh`); `*_effort` applies only to Claude.
+- **Anthropic models are refused** on the Cursor side, before launch and again if Cursor reports one: Claude reviewing Claude is not a second opinion.
+- **`auto`** hides which model actually ran. It requires `--allow-unverified-model`, and results are recorded as `independence: unverified`.
+
+Every result records the requested model, where it came from (`argument`, `env`, `default`) and the model Cursor reported running.
 
 ## Install
 
-Both CLIs must be installed and authenticated for the full cross-provider workflow. Python **3.10+** runs the shared adapter; no runtime pip packages or separate API keys are required. Check `codex --version`, `codex login status`, `claude --version` and `claude auth status`. See the [runtime reference](skills/claudex-loop/references/runtime.md) for tested CLI versions and permission boundaries.
+### 1. Prerequisites
 
-### Claude Code plugin
+| Requirement | Install | Check |
+|---|---|---|
+| Python 3.10+ | system package manager | `python3 --version` |
+| Claude Code | [docs](https://code.claude.com/docs/en/setup) | `claude --version`, `claude auth status` |
+| Cursor agent CLI | `curl https://cursor.com/install -fsS \| bash`, then `agent login` | `agent --version`, `agent status` |
+
+The runner launches the CLI (`cursor-agent` or `agent` on PATH), not the Cursor IDE. No pip packages or API keys are needed at runtime.
+
+### 2a. Claude Code (plugin)
+
+From GitHub:
 
 ```text
-/plugin marketplace add chaseai-yt/claudex-loop
-/plugin install claudex-loop@claudex-loop
+/plugin marketplace add okkindel/claudor-loop
+/plugin install claudor-loop@claudor-loop
 ```
 
-Use `/claudex-loop:claudex-route` for a lightweight recommendation or one-off handoff, or `/claudex-loop:claudex-loop`, `/claudex-loop:codex-review`, or `/claudex-loop:codex-build` for the existing workflows. Enable marketplace auto-update in the plugin menu if desired.
+Or from a local checkout (for development):
 
-### Codex or manual skill installation
+```text
+/plugin marketplace add /path/to/claudor-loop
+/plugin install claudor-loop@claudor-loop
+```
 
-Clone this repository and copy all skill directories together. The compatibility commands share the runtime inside `claudex-loop`; copying an alias alone is insufficient. `claudex-route` can also be installed on its own.
+Restart Claude Code, then use `/claudor-loop:claudor-loop`, `/claudor-loop:claudor-route`, `/claudor-loop:cursor-review` or `/claudor-loop:cursor-build`. Update with `/plugin marketplace update claudor-loop`.
 
-To install **only Claudex Route**, copy `skills/claudex-route/` into `~/.agents/skills/` for Codex or `~/.claude/skills/` for Claude Code. No other skill from this repository is required. The commands below install the complete collection into both hosts.
+### 2b. Cursor
+
+Load the checkout as a plugin for one session:
 
 ```bash
-# macOS / Linux — run from this repository
-mkdir -p ~/.agents/skills ~/.claude/skills
-cp -R skills/. ~/.agents/skills/
+agent --plugin-dir /path/to/claudor-loop
+```
+
+Or copy the skills so both hosts always see them:
+
+```bash
+# run from this repository
+mkdir -p ~/.cursor/skills ~/.claude/skills
+cp -R skills/. ~/.cursor/skills/
 cp -R skills/. ~/.claude/skills/
 ```
 
-```powershell
-# Windows PowerShell — run from this repository
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.agents\skills", "$env:USERPROFILE\.claude\skills" | Out-Null
-Copy-Item -Recurse -Force skills\* "$env:USERPROFILE\.agents\skills\"
-Copy-Item -Recurse -Force skills\* "$env:USERPROFILE\.claude\skills\"
+Copy all skill directories together: the compatibility commands share the runtime inside `claudor-loop`. `claudor-route` can be installed on its own. Updates are `git pull` and re-copy.
+
+### 3. Optional configuration
+
+```bash
+# Default Cursor model (otherwise grok-4.7-high); list ids with `agent models`
+export CLAUDOR_CURSOR_MODEL=composer-2.5
 ```
 
-Open a new session to pick up the skills. In Codex, invoke `$claudex-route` for routing, or `$claudex-loop` for the full workflow. In Claude Code, invoke `/claudex-route` or `/claudex-loop` after manual installation. Updates are `git pull` and re-copy. A `.codex-plugin/plugin.json` is also supplied for Codex plugin packaging; manual skill installation does not require adding a marketplace.
+When Cursor is the builder, it runs without `--force`, so shell commands such as tests run only if allowed in `~/.cursor/cli-config.json`, e.g. `"permissions": {"allow": ["Shell(npm)", "Shell(python3)"]}`. Otherwise the builder reports them as refused and the host runs the proof itself.
+
+Cursor reviews refuse to start while Cursor MCP servers are configured (`agent mcp list`), because plan mode does not restrict MCP tools. Remove them or pass `--allow-cursor-mcp` knowingly.
+
+### 4. Smoke test
+
+```bash
+python3 skills/claudor-loop/scripts/runner.py roles --host claude
+```
+
+prints the role table (Claude plans and builds, Cursor reviews and inspects) without calling a model.
 
 ### Examples
 
 ```text
-claudex this feature — plan and implement it
-claudex this plan, mode=review, plan=docs/migration.md, rounds=3
-claudex this feature, builder=codex, reviewer_model=gpt-6-astra
-claudex this feature, builder=claude, reviewer_model=claude-fable-5-1
+claudor this feature — plan and implement it
+claudor this plan, mode=review, plan=docs/migration.md, rounds=3
+claudor this feature, builder=cursor, builder_model=composer-2.5
+claudor this feature, reviewer_model=grok-4.7-xhigh
 ```
-
-The third example starts in Claude Code; the fourth starts in Codex. The host selects the opposite reviewer automatically. `codex-review` remains an explicit Codex review command; `codex-build` remains an explicit Codex builder command. For automatic host-based routing, use `claudex-loop`.
 
 ## Controls
 
@@ -120,9 +135,9 @@ The third example starts in Claude Code; the fourth starts in Codex. The host se
 | `mode` | `full` | `review` starts from an existing plan |
 | `plan` / `PLAN_FILE` | `PLAN.md` | Plan path, carried through every phase |
 | `log` / `LOG_FILE` | `PLAN-REVIEW-LOG.md` | Append-only decision log |
-| `builder` | current host | `claude` or `codex` |
-| `reviewer_model`, `builder_model`, `inspector_model` | each CLI's configuration | Explicit per-role model override |
-| `reviewer_effort`, `builder_effort`, `inspector_effort` | each CLI's configuration | Explicit supported reasoning effort |
+| `builder` | current host | `claude` or `cursor` |
+| `reviewer_model`, `builder_model`, `inspector_model` | Cursor: `$CLAUDOR_CURSOR_MODEL` or `grok-4.7-high`; Claude: CLI configuration | Per-role model override |
+| `reviewer_effort`, `builder_effort`, `inspector_effort` | Claude CLI configuration | Claude only; Cursor effort is in the model id |
 | `rounds` / `MAX_ROUNDS` | `5` | Completed plan-review round cap |
 | `MAX_FIX_ROUNDS` | `2` | Build-fix attempt cap |
 | `MAX_INSPECTION_ROUNDS` | `2` | Initial inspection plus one reinspection |
@@ -132,11 +147,11 @@ The third example starts in Claude Code; the fourth starts in Codex. The host se
 
 ## What an approval means
 
-The runner validates a successful CLI turn and a structured review; an empty output file or a session-start event cannot count as approval. The approval records the plan's path and SHA256. Changing the plan invalidates it. Inspections also record the pre-build commit and a fingerprint of the inspected changes, including staged and untracked files. Later code changes need another inspection.
+The runner validates a successful CLI turn and a structured review; an empty output or a session-start event cannot count as approval. The approval records the plan's path and SHA256; changing the plan invalidates it. Inspections record the pre-build commit and a fingerprint of the inspected changes, including staged and untracked files. Later code changes need another inspection.
 
-A clean structured result does not prove the model is right. The log preserves coverage, limitations and concrete evidence. Zero findings is valid; a large number of findings is not a quality score. `BLOCKED`, execution failures and exhausted round budgets are surfaced rather than converted to approval.
+A clean structured result does not prove the model is right. Zero findings is valid; a large number of findings is not a quality score. `BLOCKED`, execution failures and exhausted round budgets are surfaced rather than converted to approval.
 
-Codex reviews use the read-only shell sandbox. Claude reviews expose only file reading/search, with customizations disabled and no MCP tools. Codex runs also switch off user plugins, apps and MCP servers, since those act outside the shell sandbox. These boundaries differ: see [runtime details](skills/claudex-loop/references/runtime.md). Builders use bounded permissions, and delegated builds require a clean checkout. A worktree preserves unrelated work; it is not itself a security sandbox.
+Cursor reviews run in plan mode with a private Cursor config that denies all shell commands and writes (plan mode alone lets some commands through), and refuse to start while Cursor MCP servers are configured unless `--allow-cursor-mcp` is passed. Claude reviews expose only file reading/search, with customizations disabled and no MCP tools. Cursor builders never get `--force`: shell commands outside your Cursor allowlist are refused and reported. Delegated builds require a clean checkout. Details: [runtime reference](skills/claudor-loop/references/runtime.md).
 
 ## Development and verification
 
@@ -146,16 +161,12 @@ python scripts/validate.py
 python -m unittest discover -s tests -v
 ```
 
-CI runs on Windows, macOS and Linux. Tests cover host routing, both result formats, resumed-session identity, malformed/empty/failed responses, timeout handling, approval invalidation, complete change manifests, and build resumption. Tests use disposable Git repositories and fake CLI processes, without model quota. Live CLI smoke-test results are recorded in [VALIDATION.md](VALIDATION.md).
+Tests use disposable Git repositories and fake CLI processes, without model quota. Live CLI checks are recorded in [VALIDATION.md](VALIDATION.md).
 
-## History and credits
+## Credits
 
-This repository was previously `grill-me-codex` and `crucible`; GitHub redirects still work. The original skills remain in [legacy/](legacy/). The first reported end-to-end CRM planning run produced 55 findings over five rounds; it is an illustrative run, not a controlled benchmark of model pairings. The next step for measured defaults is comparing single-provider and cross-provider runs on the same acceptance tasks.
+- Claudex Loop, cross-model review design, runner and packaging: [Chase AI](https://youtube.com/@chaseai) ([chaseai-yt/claudex-loop](https://github.com/chaseai-yt/claudex-loop)), MIT. See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for the upstream community contributions.
+- Legacy interview skills in [legacy/](legacy/): © [Matt Pocock](https://github.com/mattpocock/skills), MIT.
+- Cursor adapter: [okkindel](https://github.com/okkindel).
 
-- Legacy interview skills: © [Matt Pocock](https://github.com/mattpocock/skills), MIT; see their third-party notices.
-- Codex-as-builder pattern adapted from [Peter Steinberger](https://github.com/steipete/agent-scripts).
-- Claudex Loop, cross-model review and packaging: [Chase AI](https://youtube.com/@chaseai).
-
-Community reports and proposed fixes from [@darian033](https://github.com/darian033), [@ujconsulting](https://github.com/ujconsulting), [@mraol08831](https://github.com/mraol08831), and [@Dwodgaming](https://github.com/Dwodgaming) informed the bidirectional update. [@tura-ai-agent](https://github.com/tura-ai-agent) contributed the pending Chinese/Japanese translations. See [community acknowledgments and PR reconciliation](ACKNOWLEDGMENTS.md) for what was incorporated, adapted, or remains open.
-
-[Claude Code Masterclass and Chase AI+](https://www.skool.com/chase-ai/about) · [MIT license](LICENSE)
+[MIT license](LICENSE)

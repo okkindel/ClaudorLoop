@@ -1,28 +1,34 @@
 ---
-name: claudex-loop
-description: "Harden a plan with independent Claude/Codex review, then optionally build and cross-inspect it. Start in either Claude Code or Codex: the host plans and the other provider reviews. Use for claudex this plan, claudex-loop, or the legacy crucible trigger; not for trivial edits."
+name: claudor-loop
+description: "Harden a plan with independent Claude/Cursor agent review, then optionally build and cross-inspect it. Start in either Claude Code or Cursor: the host plans and the other provider reviews. Use for claudor this plan or claudor-loop; not for trivial edits."
 ---
 
-# Claudex Loop
+# Claudor Loop
 
 The current conversation owns requirements, planning and coordination. The other provider reviews the plan. Either provider can build; the provider that did not build inspects the final code in a fresh session.
 
 ## Resolve roles once
 
-Identify the actual host from your runtime, not PATH, installed skills, model-name guesses, or the repository. Both CLIs may be installed. Use `host=claude` in Claude Code and `host=codex` in Codex. If the runtime identity is unavailable, ask which host the user is using once.
+Identify the actual host from your runtime, not PATH, installed skills, model-name guesses, or the repository. Both CLIs may be installed. Use `host=claude` in Claude Code and `host=cursor` in Cursor (IDE or `agent` CLI). If the runtime identity is unavailable, ask which host the user is using once.
 
 | Host | Requirements and plan | Plan reviewer | Default builder | Final inspector |
 |---|---|---|---|---|
-| Claude Code | Current Claude session | Codex | Claude | Fresh Codex session |
-| Codex | Current Codex session | Claude | Codex | Fresh Claude session |
+| Claude Code | Current Claude session | Cursor agent | Claude | Fresh Cursor agent session |
+| Cursor | Current Cursor session | Claude | Cursor | Fresh Claude session |
 
-Honor `builder=claude|codex`. The inspector is always the other provider. The host remains coordinator even when the other provider builds. To swap the planner, start the conversation in the other host; do not pretend a CLI reviewer is the user's planning conversation.
+Honor `builder=claude|cursor`. The inspector is always the other provider. The host remains coordinator even when the other provider builds. To swap the planner, start the conversation in the other host; do not pretend a CLI reviewer is the user's planning conversation.
 
-Model selection is independent of provider roles. Preserve the host's selected model. Review/build CLI calls inherit their own configuration unless `reviewer_model`, `builder_model`, or `inspector_model` is supplied; map these to the runner's `--model` for that invocation. Apply an explicit `*_effort` similarly. Fable 5.1 and GPT-6 Astra are suitable explicit choices, not mandatory pins. A model in the host UI does not prove which model a separate CLI will use. Report requested and observed model information separately; report an unresolved CLI default honestly. Never silently fall back to another model/provider on a failure.
+Model selection is independent of provider roles. Preserve the host's selected model. Map `reviewer_model`, `builder_model` or `inspector_model` to the runner's `--model` for that invocation.
+
+- **Cursor side:** the runner always passes an explicit model: `--model`, else `$CLAUDOR_CURSOR_MODEL`, else `grok-4.7-high`. Cursor's included pool covers its own models (Grok 4.5–4.7, Composer 2.5); others draw paid usage, so prefer them unless the user picks otherwise. Effort is part of a Cursor model id (`grok-4.7-high`, `grok-4.7-medium`); `*_effort` does not apply. The runner refuses Anthropic models on the Cursor side, because Claude reviewing Claude is not independent. `auto` hides the model actually used; it needs the user's explicit `--allow-unverified-model` and the result is marked `independence: unverified`, never independent approval.
+- **Claude side:** inherits the Claude CLI configuration unless a model or `*_effort` is supplied.
+- **Cursor as host:** if the Cursor session itself runs a Claude model, a Claude reviewer is not independent. Ask the user to switch the Cursor session to a non-Anthropic model, or record that the review is same-family.
+
+A model in the host UI does not prove which model a separate CLI will use. Report requested and observed model information separately; report an unresolved CLI default honestly. Never silently fall back to another model/provider on a failure.
 
 Read [the runtime reference](references/runtime.md) before launching a CLI. Resolve its runner relative to this installed SKILL.md, never relative to the project being reviewed. Use absolute paths when launching it.
 
-If the user supplies `codex_cli` or `claude_cli`, map the selected provider's executable path to `--cli`. A host app can have a newer working binary than the CLI on PATH; verify the path and version without silently changing global installation or configuration.
+If the user supplies `cursor_cli` or `claude_cli`, map the selected provider's executable path to `--cli`. A host app can have a newer working binary than the CLI on PATH; verify the path and version without silently changing global installation or configuration.
 
 ## Tunables
 

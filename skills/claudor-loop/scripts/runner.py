@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small, standard-library CLI adapter for claudex-loop. Python 3.10+."""
+"""Small, standard-library CLI adapter for claudor-loop (Claude Code <-> Cursor agent). Python 3.10+."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -16,7 +17,19 @@ import time
 import uuid
 
 
-PROVIDERS = ("claude", "codex")
+PROVIDERS = ("claude", "cursor")
+EXECUTABLES = {"claude": ("claude",), "cursor": ("cursor-agent", "agent")}
+# Grok 4.7 is in Cursor's included pool; override per machine with CLAUDOR_CURSOR_MODEL.
+DEFAULT_CURSOR_MODEL = "grok-4.7-high"
+CURSOR_MODEL_ENV = "CLAUDOR_CURSOR_MODEL"
+# Cursor can route to Anthropic models, which would make "independent" review Claude
+# reviewing Claude. Router aliases hide the model actually used.
+ANTHROPIC_MODEL = re.compile(r"claude|sonnet|opus|haiku|fable", re.I)
+ROUTER_MODELS = ("auto", "default")
+# Plan mode alone lets commands it judges read-only run (and --sandbox auto-runs them in a
+# workspace-writable sandbox), so reviewers get a private config that denies shell and writes.
+REVIEW_PERMISSIONS = {"allow": [], "deny": ["Shell(*)", "Write(**)"]}
+TIMEOUTS = {"claude": 600, "cursor": 1200}
 REVIEW_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -61,22 +74,38 @@ def cli_prefix(provider: str, override: str | None = None) -> list[str]:
     """Avoid cmd.exe command-string quoting when a Windows npm shim is on PATH."""
     if override and (not Path(override).is_absolute() or not Path(override).is_file()):
         raise RunError("--cli must be an absolute path to an installed CLI executable.")
-    executable = override or shutil.which(provider)
+    executable = override or next(filter(None, map(shutil.which, EXECUTABLES[provider])), None)
     if not executable:
-        raise RunError(f"{provider} is not on PATH. Install and authenticate its CLI first.")
+        names = " or ".join(EXECUTABLES[provider])
+        raise RunError(f"{names} is not on PATH. Install and authenticate the {provider} CLI first.")
     path = Path(executable)
     if os.name == "nt" and path.suffix.lower() in (".cmd", ".bat", ".ps1"):
-        package = path.parent / "node_modules" / (
-            "@openai/codex" if provider == "codex" else "@anthropic-ai/claude-code")
-        native = package / "bin" / f"{provider}.exe"
-        if native.is_file():
-            return [str(native)]
-        entry = package / ("bin/codex.js" if provider == "codex" else "cli.js")
-        node = shutil.which("node")
-        if node and entry.is_file():
-            return [node, str(entry)]
+        if provider == "claude":
+            package = path.parent / "node_modules" / "@anthropic-ai/claude-code"
+            native = package / "bin" / "claude.exe"
+            if native.is_file():
+                return [str(native)]
+            entry = package / "cli.js"
+            node = shutil.which("node")
+            if node and entry.is_file():
+                return [node, str(entry)]
         raise RunError(f"Cannot safely launch {path}. Put the native CLI executable on PATH.")
     return [str(path)]
+
+
+def resolve_model(provider: str, model: str | None, allow_router: bool = False) -> tuple[str | None, str]:
+    """Return the model to request and where it came from; Claude keeps its CLI default."""
+    if provider != "cursor":
+        return model, "argument" if model else "CLI default (unresolved)"
+    source = "argument" if model else "env" if os.environ.get(CURSOR_MODEL_ENV) else "default"
+    model = model or os.environ.get(CURSOR_MODEL_ENV) or DEFAULT_CURSOR_MODEL
+    if ANTHROPIC_MODEL.search(model):
+        raise RunError(f"Cursor model {model} is an Anthropic model; the Cursor side must not be Claude. "
+                       "Choose e.g. grok-4.7-high, composer-2.5 or a GPT model.")
+    if model.lower() in ROUTER_MODELS and not allow_router:
+        raise RunError(f"Cursor model {model} hides the model actually used and may pick Claude. "
+                       "Pass --allow-unverified-model to accept a review of unverified independence.")
+    return model, source
 
 
 def git(repo: Path, *args: str) -> bytes:
@@ -146,46 +175,58 @@ def validate_review(value) -> dict:
     return value
 
 
-def codex_mcp_servers(prefix: list[str], repo: Path) -> list[str]:
-    """Name every enabled user/project MCP server so a review can switch each one off.
+def cursor_mcp_servers(prefix: list[str], repo: Path, env=None) -> str | None:
+    """Return Cursor's MCP listing when any server is configured, else None.
 
-    The read-only shell sandbox does not govern MCP side effects (#28). Plugin and app
-    servers are removed by --disable; the rest are listed here. Fails closed.
+    Plan mode blocks edits and shell, but MCP tools act outside it. The listing format
+    is not a stable API, so anything except the explicit empty message counts as configured.
     """
-    probe = subprocess.run(prefix + ["mcp", "list", "--json", "--disable", "apps", "--disable", "plugins"],
-                           cwd=repo, stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+    probe = subprocess.run(prefix + ["mcp", "list"], cwd=repo, stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=60, env=env)
+    text = (probe.stdout + probe.stderr).decode("utf-8", errors="replace").strip()
+    if probe.returncode == 0 and text.startswith("No MCP servers configured"):
+        return None
+    return text or f"agent mcp list exited {probe.returncode}"
+
+
+def cursor_review_config(config_dir: Path) -> dict:
+    """Write the reviewer's cli-config.json: the user's settings with shell and writes denied.
+
+    Cursor keeps chats under its config directory, so a resumed review must reuse it.
+    Authentication lives elsewhere (~/.config/cursor/auth.json) and is unaffected.
+    """
+    home = os.environ.get("CURSOR_CONFIG_DIR", "").strip() or (
+        Path(os.environ["XDG_CONFIG_HOME"]) / "cursor" if os.environ.get("XDG_CONFIG_HOME", "").strip()
+        else Path.home() / ".cursor")
     try:
-        servers = json.loads(probe.stdout) if probe.returncode == 0 else None
-    except ValueError:
-        servers = None
-    if not isinstance(servers, list) or any(not isinstance(s, dict) for s in servers):
-        raise RunError("Could not list Codex MCP servers; refusing to review with unknown tools loaded.")
-    names = [s.get("name") for s in servers if s.get("enabled")]
-    if any(not isinstance(n, str) or not n or not all(c.isalnum() or c in "_-" for c in n) for n in names):
-        raise RunError("Codex listed an MCP server name that cannot be disabled safely.")
-    return names
+        config = json.loads((Path(home) / "cli-config.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+    config.setdefault("version", 1)
+    config["permissions"] = REVIEW_PERMISSIONS
+    config_dir.mkdir(parents=True, exist_ok=True)
+    save(config_dir / "cli-config.json", config)
+    return {**os.environ, "CURSOR_CONFIG_DIR": str(config_dir)}
 
 
 def command(provider: str, mode: str, run_dir: Path, model=None, effort=None,
-            session=None, mcp_off=()) -> list[str]:
+            session=None) -> list[str]:
     review = mode != "build"
-    if provider == "codex":
-        args = ["exec"] + (["resume", session] if session else [])
-        args += (["-c", 'sandbox_mode="read-only"'] if session and review else
-                 ["-c", 'sandbox_mode="workspace-write"'] if session else
-                 ["-s", "read-only" if review else "workspace-write"])
-        args += ["-c", 'approval_policy="never"', "--json", "-o", str(run_dir / "reply.txt")]
-        # Plugins/apps (computer use, browser) and the notify hook act outside the sandbox.
-        args += ["--disable", "apps", "--disable", "plugins", "-c", "notify=[]"]
+    if provider == "cursor":
+        # stream-json carries the init event that names the model actually used.
+        args = ["-p", "--output-format", "stream-json", "--trust"]
         if review:
-            for name in mcp_off:
-                args += ["-c", f"mcp_servers.{name}.enabled=false"]
-            args += ["--skip-git-repo-check", "--output-schema", str(run_dir / "schema.json")]
+            # Never --sandbox here: it auto-runs commands in a workspace-writable sandbox.
+            args += ["--mode", "plan"]
+        # Builds keep the user's permissions: no --force, so shell commands outside the
+        # allowlist are refused and reported rather than silently run.
+        if session:
+            args += ["--resume", session]
         if model:
-            args += ["-m", model]
-        if effort:
-            args += ["-c", f'model_reasoning_effort="{effort}"']
-        return args + ["-"]
+            args += ["--model", model]
+        return args
     args = ["-p", "--output-format", "json", "--permission-prompts", "none"]
     if review:
         args += ["--safe-mode", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
@@ -208,13 +249,13 @@ def command(provider: str, mode: str, run_dir: Path, model=None, effort=None,
     return args
 
 
-def execute(argv: list[str], prompt: str, repo: Path, run_dir: Path, timeout: int) -> int:
+def execute(argv: list[str], prompt: str, repo: Path, run_dir: Path, timeout: int, env=None) -> int:
     """Keep diagnostics and terminate the process tree on timeout/interruption."""
     with (run_dir / "stdout.txt").open("wb") as out, (run_dir / "stderr.txt").open("wb") as err:
         options = {"start_new_session": True} if os.name != "nt" else {
             "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
         with subprocess.Popen(argv, cwd=repo, stdin=subprocess.PIPE, stdout=out, stderr=err,
-                              **options) as proc:
+                              env=env, **options) as proc:
             try:
                 proc.communicate(prompt.encode("utf-8"), timeout=timeout)
             except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
@@ -228,49 +269,46 @@ def execute(argv: list[str], prompt: str, repo: Path, run_dir: Path, timeout: in
             return proc.returncode
 
 
-def codex_effective_settings(session: str) -> dict:
-    """Best effort: the model, effort and sandbox the Codex client applied (#38).
-
-    Read from the last turn_context in Codex's session rollout, an undocumented
-    internal file. These are client-side settings, not a server confirmation.
-    Any missing file or changed format leaves the record unchanged.
-    """
+def json_reply(text) -> dict:
+    """Cursor has no output-schema flag; accept the object even if fenced or wrapped."""
+    if not isinstance(text, str) or not text.strip():
+        raise RunError("Cursor returned an empty review.")
+    body = re.sub(r"^```[a-z]*\s*|\s*```$", "", text.strip())
     try:
-        home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
-        rollout = max((home / "sessions").glob(f"*/*/*/rollout-*-{session}.jsonl"),
-                      key=lambda f: f.stat().st_mtime, default=None)
-        context = None
-        for line in (rollout.read_text(encoding="utf-8").splitlines() if rollout else []):
-            event = json.loads(line) if line.strip() else {}
-            if isinstance(event, dict) and event.get("type") == "turn_context":
-                context = event.get("payload")
-        if not isinstance(context, dict):
-            return {}
-        sandbox = context.get("sandbox_policy")
-        settings = {"effective_model": context.get("model"), "effective_effort": context.get("effort"),
-                    "effective_sandbox": sandbox.get("type") if isinstance(sandbox, dict) else None}
-        return {k: v for k, v in settings.items() if isinstance(v, str)}
-    except (OSError, ValueError):
-        return {}
+        return json.loads(body)
+    except ValueError:
+        first, last = body.find("{"), body.rfind("}")
+        if first < 0 or last < first:
+            raise RunError("Cursor review is not a JSON object.")
+        return json.loads(body[first:last + 1])
 
 
 def parse_result(provider: str, mode: str, run_dir: Path, expected_session=None) -> dict:
     stdout = (run_dir / "stdout.txt").read_text(encoding="utf-8", errors="replace")
-    if provider == "codex":
+    if provider == "cursor":
         events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
         if any(not isinstance(e, dict) for e in events):
-            raise RunError("Codex event stream contains a non-object event.")
-        if any(e.get("type") in ("error", "turn.failed") for e in events):
-            raise RunError("Codex reported a failed turn; inspect the captured diagnostics.")
-        started = [e["thread_id"] for e in events if e.get("type") == "thread.started"]
-        completed = [e for e in events if e.get("type") == "turn.completed"]
-        if len(started) != 1 or len(completed) != 1:
-            raise RunError("Missing or ambiguous Codex session/completion event.")
-        session = started[0]
-        text = (run_dir / "reply.txt").read_text(encoding="utf-8")
-        value = json.loads(text) if mode != "build" else text
-        metadata = {"usage": completed[0].get("usage"), "observed_models": [],
-                    **codex_effective_settings(session)}
+            raise RunError("Cursor event stream contains a non-object event.")
+        inits = [e for e in events if e.get("type") == "system" and e.get("subtype") == "init"]
+        results = [e for e in events if e.get("type") == "result"]
+        if len(results) != 1:
+            raise RunError("Missing or ambiguous Cursor result event.")
+        result = results[0]
+        if result.get("is_error") or result.get("subtype") != "success":
+            raise RunError("Cursor did not finish successfully; inspect the captured diagnostics.")
+        session = result.get("session_id")
+        if any(e.get("session_id") != session for e in inits):
+            raise RunError("Cursor init and result events name different sessions.")
+        observed = [e["model"] for e in inits if isinstance(e.get("model"), str)]
+        if any(ANTHROPIC_MODEL.search(m) for m in observed):
+            raise RunError(f"Cursor ran an Anthropic model ({', '.join(observed)}); "
+                           "this is not independent of Claude.")
+        value = json_reply(result.get("result")) if mode != "build" else result.get("result")
+        # Display names such as "Composer 2.5"; a router name ("Auto ...") hides the model.
+        known = bool(observed) and not any(m.lower().startswith(ROUTER_MODELS) for m in observed)
+        metadata = {"usage": result.get("usage"), "observed_models": observed,
+                    "request_id": result.get("request_id"),
+                    "independence": "verified" if known else "unverified"}
     else:
         envelope = json.loads(stdout)
         # Some CLI versions emit an array of init/assistant/result events for JSON.
@@ -346,12 +384,15 @@ def run(args) -> int:
         raise RunError("Build provider must match the builder. Use --builder to change both roles.")
     # Bind approval and the dispatched work order to the same captured bytes.
     plan_body = plan.read_bytes()
+    if provider == "cursor" and args.effort:
+        raise RunError("Cursor encodes effort in the model id (e.g. grok-4.7-high); use --model instead of --effort.")
     if args.mode == "check":
         if not args.approval:
             raise RunError("check requires --approval result.json.")
         check_approval(json.loads(Path(args.approval).read_text(encoding="utf-8")), plan, repo, plan_body)
         print("Approval matches the current plan.")
         return 0
+    args.model, model_source = resolve_model(provider, args.model, args.allow_unverified_model)
     if args.mode == "inspect" and (not args.base or args.resume):
         raise RunError("Inspection requires --base and a fresh session (no --resume).")
     previous = (previous_record(Path(args.resume), repo, plan, provider, args.mode,
@@ -374,10 +415,11 @@ def run(args) -> int:
     if root == repo or repo in root.parents:
         raise RunError("Keep run artifacts outside the target checkout so they do not contaminate its diff.")
     root.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix="claudex-", dir=root))
+    run_dir = Path(tempfile.mkdtemp(prefix="claudor-", dir=root))
     record = {"status": "running", "mode": args.mode, "provider": provider, "roles": roles,
               "repo": str(repo), "plan": str(plan), "plan_sha256": digest(plan_body),
-              "requested_model": args.model, "requested_effort": args.effort,
+              "requested_model": args.model, "model_source": model_source,
+              "requested_effort": args.effort,
               "base": args.base, "snapshot": before, "previous": args.resume,
               "started_at": time.time(), "artifacts": str(run_dir)}
     save(run_dir / "result.json", record)
@@ -394,6 +436,8 @@ def run(args) -> int:
             "REVISE needs concrete findings; BLOCKED means required evidence could not be inspected. "
             "You cannot edit files, run tests or delegate. Do not claim tests passed. "
             "Return only the requested structured review.\n"
+            + ("Reply with ONLY one JSON object, without prose or code fences, matching this JSON Schema: "
+               + json.dumps(REVIEW_SCHEMA, separators=(",", ":")) + "\n" if provider == "cursor" else "")
         ) if args.mode != "build" else (
             "Implement the attached frozen work order within this checkout. Do not commit, push or publish. "
             "Resolve source paths relative to this checkout; never edit an original checkout named in the plan. "
@@ -420,15 +464,24 @@ def run(args) -> int:
             raise RunError("CLI version probe failed. Check the resolved executable before retrying.")
         record["cli_version"] = version.stdout.decode("utf-8", errors="replace").strip()
         record["executable"] = prefix
-        mcp_off = (codex_mcp_servers(prefix, repo)
-                   if provider == "codex" and args.mode != "build" else [])
-        record["disabled_mcp_servers"] = mcp_off
+        env = None
+        if provider == "cursor" and args.mode != "build":
+            config_dir = Path(previous["cursor_config_dir"]) if previous else run_dir / "cursor-config"
+            if previous and not (config_dir / "chats").is_dir():
+                raise RunError("The previous review's Cursor config directory (with its chat) is gone; start fresh.")
+            env = cursor_review_config(config_dir)
+            record["cursor_config_dir"] = str(config_dir)
+            servers = cursor_mcp_servers(prefix, repo, env)
+            record["cursor_mcp_servers"] = servers
+            if servers and not args.allow_cursor_mcp:
+                raise RunError("Cursor has MCP servers configured and plan mode does not govern them. "
+                               "Remove them, or pass --allow-cursor-mcp to accept and record the risk.")
         argv = prefix + command(provider, args.mode, run_dir, args.model, args.effort,
-                                previous["session_id"] if previous else None, mcp_off)
+                                previous["session_id"] if previous else None)
         save(run_dir / "command.json", argv)
         print(json.dumps({"provider": provider, "model": args.model or "CLI default (unresolved)",
                           "mode": args.mode, "artifacts": str(run_dir)}), flush=True)
-        code = execute(argv, prompt, repo, run_dir, args.timeout)
+        code = execute(argv, prompt, repo, run_dir, args.timeout or TIMEOUTS[provider], env)
         record["exit_code"] = code
         if code:
             raise RunError(f"{provider} exited {code}; inspect stdout.txt and stderr.txt.")
@@ -461,7 +514,12 @@ def main(argv=None) -> int:
     parser.add_argument("--provider", choices=PROVIDERS)
     parser.add_argument("--repo", default=".")
     parser.add_argument("--plan", default="PLAN.md")
-    parser.add_argument("--model", help="Explicit model override; omitted means provider CLI default.")
+    parser.add_argument("--model", help="Explicit model override. Omitted: Claude uses its CLI default; "
+                        f"Cursor uses ${CURSOR_MODEL_ENV} or {DEFAULT_CURSOR_MODEL}.")
+    parser.add_argument("--allow-unverified-model", action="store_true",
+                        help="Allow a Cursor router model (auto) whose actual model cannot be verified.")
+    parser.add_argument("--allow-cursor-mcp", action="store_true",
+                        help="Allow a Cursor review while MCP servers are configured; recorded in the result.")
     parser.add_argument("--cli", help="Absolute CLI executable path when PATH resolves to an older installation.")
     parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--resume", help="Prior successful result.json, never a guessed session or --last.")
@@ -471,19 +529,19 @@ def main(argv=None) -> int:
     parser.add_argument("--unreviewed-spec", action="store_true")
     parser.add_argument("--proof", help="Exact agreed proof command, passed as data to the builder.")
     parser.add_argument("--artifacts", help="Persistent run directory outside the target checkout.")
-    parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--timeout", type=int, help="Seconds; default 600 for Claude, 1200 for Cursor.")
     args = parser.parse_args(argv)
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(errors="backslashreplace")  # error text may hold any path (#31)
     try:
-        if args.timeout < 1:
+        if args.timeout is not None and args.timeout < 1:
             raise RunError("Timeout must be positive.")
         if args.mode == "roles":
             print(json.dumps(resolve_roles(args.host, args.provider, args.builder), indent=2))
             return 0
         return run(args)
     except (RunError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        print(f"claudex-loop: {exc}", file=sys.stderr)
+        print(f"claudor-loop: {exc}", file=sys.stderr)
         return 1
 
 

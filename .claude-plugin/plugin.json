@@ -1,18 +1,18 @@
 {
-  "name": "claudex-loop",
-  "description": "Standalone model routing and one-off handoffs with Claudex Route, plus the full Claudex Loop planning, build and review workflow.",
+  "name": "claudor-loop",
+  "description": "Claude Code <-> Cursor agent: standalone model routing and one-off handoffs with Claudor Route, plus the full Claudor Loop planning, build and independent cross-review workflow.",
   "author": {
-    "name": "Chase AI",
-    "url": "https://youtube.com/@chaseai"
+    "name": "okkindel",
+    "url": "https://github.com/okkindel"
   },
-  "homepage": "https://github.com/chaseai-yt/claudex-loop",
+  "homepage": "https://github.com/okkindel/claudor-loop",
   "license": "MIT",
   "keywords": [
     "planning",
-    "codex",
+    "cursor",
     "cross-model",
     "adversarial-review",
     "skills"
   ],
-  "version": "2.1.0"
+  "version": "1.0.0"
 }

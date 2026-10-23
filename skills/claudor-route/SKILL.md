@@ -1,11 +1,11 @@
 ---
-name: claudex-route
-description: "Recommend a model and a scoped handoff for a task in Claude Code or Codex. Use when choosing who should handle a task, seeking a second opinion, getting unstuck, or delegating focused work; execute one handoff when requested."
+name: claudor-route
+description: "Recommend a model and a scoped handoff for a task in Claude Code or Cursor. Use when choosing who should handle a task, seeking a second opinion, getting unstuck, or delegating focused work; execute one handoff when requested."
 ---
 
-# Claudex Route
+# Claudor Route
 
-Choose a useful next step for the task: keep it with the current agent, obtain a second opinion, investigate a blocker, or delegate a bounded piece of work. Give a brief recommendation before any requested execution. This skill is self-contained and does not start Claudex Loop, require a formal plan, or create review logs.
+Choose a useful next step for the task: keep it with the current agent, obtain a second opinion, investigate a blocker, or delegate a bounded piece of work. Give a brief recommendation before any requested execution. This skill is self-contained and does not start Claudor Loop, require a formal plan, or create review logs.
 
 ## Understand the job
 
@@ -22,7 +22,7 @@ Treat a request for advice as recommendation-only. A request to route and perfor
 | An implementation is ready | Ask another provider to inspect relevant changes against requirements, including test validity |
 | Repeated attempts have failed | Give another provider the reproduction, evidence, and failed approaches; ask for a testable alternative explanation |
 | A separable task has clear inputs and acceptance checks | Delegate that piece to a suitable smaller model and inspect its result |
-| The user wants repeated planning, revision, building, and independent inspection | Recommend Claudex Loop; load that separate skill only if the user requests that workflow |
+| The user wants repeated planning, revision, building, and independent inspection | Recommend Claudor Loop; load that separate skill only if the user requests that workflow |
 
 The current agent keeps the user's requirements and coordinates the work. A different provider offers another perspective, not guaranteed correctness. A cheaper delegate does not need to be a peer reviewer of the entire architecture.
 
@@ -30,14 +30,15 @@ The current agent keeps the user's requirements and coordinates the work. A diff
 
 Start with models available in the user's environment. The following are dated starting points (October 2026), not a permanent leaderboard:
 
-- **GPT-6 Luna** (`gpt-6-luna`): consider for narrow, repetitive tasks with explicit checks, such as fixtures, extraction, documentation updates, or an isolated helper.
-- **GPT-6.1 Sol** (`gpt-6.1-sol`) and **Claude Opus 5.5** (`claude-opus-5-5`): consider for bounded coding or investigation requiring more judgment and context than the Luna task above.
-- **GPT-6 Astra** (`gpt-6-astra`) and **Claude Fable 5.1** (`claude-fable-5-1`): candidates for ambiguous work, difficult debugging, or a substantial independent review. From Codex, Fable is a candidate for cross-provider review; from Claude Code, Astra is a candidate.
-- **Claude Sonnet or another available model**: retain as options when their task fit, existing context, account access, or the user's preference favors them. Cross-provider delegation is optional.
+- **Composer 2.5** (`composer-2.5`, Cursor): consider for narrow, repetitive tasks with explicit checks, such as fixtures, extraction, documentation updates, or an isolated helper.
+- **Grok 4.7** (`grok-4.7-medium` / `grok-4.7-high`, Cursor) and **Claude Opus 5.5** (`claude-opus-5-5`): consider for bounded coding or investigation requiring more judgment and context.
+- **Grok 4.7 High/Extra High** (`grok-4.7-high`, `grok-4.7-xhigh`, Cursor) and **Claude Fable 5.1** (`claude-fable-5-1`): candidates for ambiguous work, difficult debugging, or a substantial independent review. From Cursor, Fable is a candidate for cross-provider review; from Claude Code, Grok 4.7 is a candidate.
+- **GPT, Gemini or other models in Cursor**: retain as options when task fit or the user's preference favors them. They usually draw paid usage rather than Cursor's included pool (Grok 4.5–4.7, Composer 2.5); confirm with the user before choosing one for cost reasons.
+- **Never an Anthropic model through Cursor for a cross-provider role**: that is Claude reviewing Claude. `auto` hides which model runs and may pick Claude.
 
-Use local model listings and CLI status/help when accessible without launching a model task. Distinguish listed, authenticated, and proven runnable: none alone establishes the others. If access or the active model is unknown, make the recommendation conditional and explain what needs checking. Do not launch paid comparison calls just to choose a model.
+Use local model listings (`agent models`) and CLI status/help when accessible without launching a model task. Distinguish listed, authenticated, and proven runnable: none alone establishes the others. If access or the active model is unknown, make the recommendation conditional and explain what needs checking. Do not launch paid comparison calls just to choose a model.
 
-For price-sensitive choices or comparative claims, consult current official [OpenAI model information](https://developers.openai.com/api/docs/models) and [Anthropic model information](https://platform.claude.com/docs/en/about-claude/models/overview). Check [Codex usage guidance](https://learn.chatgpt.com/docs/pricing) when using subscription allowances. API token prices are different from subscription usage; task costs also include context transfer, reasoning, retries, and host verification. Do not call Sol cheaper than Sonnet, claim Luna is universally stronger, or promise savings without relevant evidence. If sources cannot be checked, omit numeric claims and label the cost assumption.
+For price-sensitive choices or comparative claims, consult current official [OpenAI model information](https://developers.openai.com/api/docs/models) and [Anthropic model information](https://platform.claude.com/docs/en/about-claude/models/overview). Check [Cursor pricing](https://cursor.com/pricing) and the user's Cursor usage dashboard when using plan allowances. API token prices are different from subscription usage; task costs also include context transfer, reasoning, retries, and host verification. Do not call Grok cheaper than Sonnet, claim Composer is universally stronger, or promise savings without relevant evidence. If sources cannot be checked, omit numeric claims and label the cost assumption.
 
 ## Return a short routing brief
 
@@ -51,11 +52,11 @@ Offer at most one alternative when it helps a real tradeoff. Do not interview th
 
 ## Execute one handoff when requested
 
-Use the selected provider's CLI from the correct project directory, explicitly selecting the recommended or requested model for that call. Check the actual binary's version and help; consult the relevant official [Codex non-interactive guide](https://learn.chatgpt.com/docs/non-interactive-mode) or [Claude programmatic guide](https://code.claude.com/docs/en/headless) if needed. Avoid changing global defaults, installing software, or switching models silently to make a call succeed.
+Use the selected provider's CLI from the correct project directory, explicitly selecting the recommended or requested model for that call. Check the actual binary's version and help; consult the relevant official [Cursor CLI guide](https://cursor.com/docs/cli/overview) or [Claude programmatic guide](https://code.claude.com/docs/en/headless) if needed. Avoid changing global defaults, installing software, or switching models silently to make a call succeed.
 
 Pass a self-contained brief with the goal, relevant requirements and files, constraints, expected output, and verification. For debugging, include failed attempts. For code inspection, identify the comparison baseline and relevant committed, staged, unstaged, and untracked changes. The child does not inherit the conversation. Send prompt text through stdin or a safely handled file; never interpolate arbitrary prompts into shell commands.
 
-For review or diagnosis, use supported read-only project tools and restrict external write-capable tools too; a prompt saying "read-only" is not enforcement. If those restrictions cannot be established, return the prepared handoff and explain the limitation. For authorized edits, use scoped write permissions and preserve existing user changes; use an isolated worktree when concurrent edits would conflict. Never bypass permissions. The host pauses edits to the delegate's files while it works.
+For review or diagnosis, use supported read-only project tools (for Cursor, `agent -p --mode plan`) and restrict external write-capable tools too; a prompt saying "read-only" is not enforcement. If those restrictions cannot be established, return the prepared handoff and explain the limitation. For authorized edits, use scoped write permissions and preserve existing user changes; use an isolated worktree when concurrent edits would conflict. Never bypass permissions. The host pauses edits to the delegate's files while it works.
 
 Use a fresh session for the one-off handoff, a bounded timeout, and separate stdout/stderr artifacts in a unique temporary directory outside the project. Keep the user informed during long calls. Read the completed result and exit status; an empty response, timeout, or permission failure is not success. Stop and report a failed handoff rather than automatically retrying, escalating to a larger model, or starting another round. If a timed-out process may still run, resolve its status before restarting work on the same files.
 

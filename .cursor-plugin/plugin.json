@@ -1,0 +1,23 @@
+{
+  "name": "claudor-loop",
+  "displayName": "Claudor Loop",
+  "version": "1.0.0",
+  "description": "Claude Code <-> Cursor agent: standalone model routing and one-off handoffs with Claudor Route, plus the full Claudor Loop planning, build and independent cross-review workflow.",
+  "author": {
+    "name": "okkindel",
+    "url": "https://github.com/okkindel"
+  },
+  "homepage": "https://github.com/okkindel/claudor-loop",
+  "repository": "https://github.com/okkindel/claudor-loop",
+  "license": "MIT",
+  "logo": "assets/logo.svg",
+  "keywords": [
+    "planning",
+    "cursor",
+    "cross-model",
+    "adversarial-review",
+    "skills"
+  ],
+  "category": "productivity",
+  "skills": "./skills/"
+}

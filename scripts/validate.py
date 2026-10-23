@@ -33,17 +33,17 @@ def validate(root=ROOT):
             target = link.split("#", 1)[0]
             if target and not (path.parent / target).exists():
                 errors.append(f"{path.relative_to(root)}: missing reference {link}")
-    for folder in (".claude-plugin", ".codex-plugin"):
+    for folder in (".claude-plugin", ".cursor-plugin"):
         try:
             manifest = json.loads((root / folder / "plugin.json").read_text(encoding="utf-8"))
-            if manifest.get("name") != "claudex-loop" or not manifest.get("version"):
+            if manifest.get("name") != "claudor-loop" or not manifest.get("version"):
                 errors.append(f"{folder}: missing name/version")
         except (OSError, ValueError) as exc:
             errors.append(f"{folder}: {exc}")
     marketplace = json.loads((root / ".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
-    if marketplace["plugins"][0]["name"] != "claudex-loop":
+    if marketplace["plugins"][0]["name"] != "claudor-loop":
         errors.append("Claude marketplace plugin name mismatch")
-    if not (root / "skills/claudex-loop/scripts/runner.py").is_file():
+    if not (root / "skills/claudor-loop/scripts/runner.py").is_file():
         errors.append("Missing shared runner")
     return errors
 

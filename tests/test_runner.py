@@ -465,16 +465,22 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--model") + 1], "composer-2.5")
         self.assertEqual((record["observed_models"], record["independence"]), (["Grok 4.7 High"], "verified"))
         code, record, _, _ = self.invoke(env={"CLAUDOR_CURSOR_MODEL": "grok-4.7-medium"})
-        self.assertEqual((record["requested_model"], record["model_source"]), ("grok-4.7-medium", "env"))
+        self.assertEqual((record["requested_model"], record["model_source"]), ("grok-4.7-medium", "CLAUDOR_CURSOR_MODEL"))
         code, record, _, _ = self.invoke(extra=("--model", "cursor-grok-4.6-high"),
                                          env={"CLAUDOR_CURSOR_MODEL": "composer-2.5"})
         self.assertEqual((record["requested_model"], record["model_source"]), ("cursor-grok-4.6-high", "argument"))
 
-    def test_cursor_inspection_defaults_to_grok_high(self):
+    def test_cursor_role_model_variables_win_over_shared_one(self):
+        env = {"CLAUDOR_CURSOR_MODEL": "grok-4.7-medium", "CLAUDOR_CURSOR_INSPECT_MODEL": "grok-4.7-high"}
         (self.repo / "new.py").write_text("new\n")
-        code, record, _, _ = self.invoke(mode="inspect", extra=("--base", self.base))
+        code, record, _, _ = self.invoke(mode="inspect", extra=("--base", self.base), env=env)
         self.assertEqual(code, 0, record)
-        self.assertEqual((record["requested_model"], record["model_source"]), ("grok-4.7-high", "default"))
+        self.assertEqual((record["requested_model"], record["model_source"]),
+                         ("grok-4.7-high", "CLAUDOR_CURSOR_INSPECT_MODEL"))
+        code, record, _, _ = self.invoke(env=env)  # review has no role variable: shared one applies
+        self.assertEqual((record["requested_model"], record["model_source"]), ("grok-4.7-medium", "CLAUDOR_CURSOR_MODEL"))
+        code, record, _, _ = self.invoke(mode="inspect", extra=("--base", self.base))
+        self.assertEqual((record["requested_model"], record["model_source"]), ("composer-2.5", "default"))
 
     def test_cursor_rejects_anthropic_models_before_launch(self):
         for model in ("claude-opus-5-5-high", "claude-fable-5-1-high", "claude-4.5-sonnet"):

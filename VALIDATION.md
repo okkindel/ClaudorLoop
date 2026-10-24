@@ -36,7 +36,7 @@ The suite covers both host directions, Cursor plan-mode/resume argument construc
 | `grok-4.7-medium` | 137 s, 6.5k; REVISE, seeded defect (high) + 2 others | not run |
 | `grok-4.7-high` | 316 s, 15k; REVISE, seeded defect (high) + 5 others | 723 s, 31.6k; REVISE, found the `NamedTemporaryFile`-object bug (high), the Linux `sendfile` test bypass, directory fsync and three more |
 
-Time goes into hidden reasoning, not tool calls (reads/greps return in under a second). Hence the defaults: Composer for iterative rounds and builds, Grok 4.7 High for the final code inspection.
+Time goes into hidden reasoning, not tool calls (reads/greps return in under a second). A real-project review on Grok 4.7 High later took about 45 minutes, so Composer is the default for every role and Grok is opt-in per role (`CLAUDOR_CURSOR_INSPECT_MODEL` etc.).
 
 The Cursor CLI auto-updated from 2026.10.01 to 2026.10.22 during development; each result records the `cli_version` actually used.
 
@@ -45,7 +45,7 @@ These checks exercise transport, permission boundaries and obvious-defect detect
 ## Limits
 
 - Project-level Cursor hooks cannot be disabled per call and still fire in reviewer and builder runs.
-- One fixture and one run per model: the comparison below shows speed and recall on these plans, not a general ranking.
+- One fixture and one run per model: the comparison above shows speed and recall on these plans, not a general ranking.
 - The deny rules do not govern MCP tools; the runner refuses Cursor reviews while servers are configured unless explicitly allowed.
 - The observed Cursor model is a display name from the client's init event, not a server confirmation.
 - Windows and macOS were not live-tested with Cursor; a Cursor batch shim on Windows is refused rather than launched through a shell.

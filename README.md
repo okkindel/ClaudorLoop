@@ -43,8 +43,8 @@ flowchart LR
 
 Cursor can run many models, including Anthropic ones, so claudor-loop guards the "independent" part:
 
-- **Defaults:** `composer-2.5` for plan-review rounds and builds, `grok-4.7-high` for the final code inspection. Both are in Cursor's included usage pool; most other models draw paid usage. Live, Composer found the seeded defects in ~1 minute per round; Grok 4.7 High took 5–12 minutes but caught subtler bugs Composer missed (see [VALIDATION.md](VALIDATION.md)). For a consequential plan, use `reviewer_model=grok-4.7-high`.
-- **Your own default:** `export CLAUDOR_CURSOR_MODEL=grok-4.7-medium` (any id from `agent models`; applies to every role). Per run: `reviewer_model=`, `builder_model=`, `inspector_model=`.
+- **Default:** `composer-2.5` for every role. It is in Cursor's included usage pool (as are Grok 4.5–4.7); most other models draw paid usage. Live, Composer found the seeded defects in ~1 minute per round. Grok 4.7 High caught subtler bugs but took 5–12 minutes per round on a tiny fixture and up to 45 minutes on a real review (see [VALIDATION.md](VALIDATION.md)).
+- **Configurable per role** (see [configuration](#3-optional-configuration)), or per run with `reviewer_model=`, `builder_model=`, `inspector_model=`.
 - **Effort** is part of the Cursor model id (`grok-4.7-medium`, `grok-4.7-xhigh`); `*_effort` applies only to Claude.
 - **Anthropic models are refused** on the Cursor side, before launch and again if Cursor reports one: Claude reviewing Claude is not a second opinion.
 - **`auto`** hides which model actually ran. It requires `--allow-unverified-model`, and results are recorded as `independence: unverified`.
@@ -103,9 +103,21 @@ Copy all skill directories together: the compatibility commands share the runtim
 ### 3. Optional configuration
 
 ```bash
-# One Cursor model for every role (otherwise composer-2.5, and grok-4.7-high for inspection)
-export CLAUDOR_CURSOR_MODEL=grok-4.7-medium
+# Cursor model per role; ids from `agent models`. Unset roles fall back to
+# CLAUDOR_CURSOR_MODEL, then composer-2.5.
+export CLAUDOR_CURSOR_REVIEW_MODEL=composer-2.5    # plan-review rounds
+export CLAUDOR_CURSOR_BUILD_MODEL=composer-2.5     # Cursor as builder
+export CLAUDOR_CURSOR_INSPECT_MODEL=grok-4.7-high  # final code inspection (slow, thorough)
+export CLAUDOR_CURSOR_MODEL=grok-4.7-medium        # shared fallback for every role
 ```
+
+Instead of a shell profile you can put them in `~/.claude/settings.json`, so every Claude Code session picks them up:
+
+```json
+{ "env": { "CLAUDOR_CURSOR_INSPECT_MODEL": "grok-4.7-high" } }
+```
+
+A per-run argument (`inspector_model=...`) beats the role variable, which beats `CLAUDOR_CURSOR_MODEL`. Each result records the model used and where it came from (`model_source`).
 
 When Cursor is the builder, it runs without `--force`, so shell commands such as tests run only if allowed in `~/.cursor/cli-config.json`, e.g. `"permissions": {"allow": ["Shell(npm)", "Shell(python3)"]}`. Otherwise the builder reports them as refused and the host runs the proof itself.
 
@@ -136,7 +148,7 @@ claudor this feature, reviewer_model=grok-4.7-xhigh
 | `plan` / `PLAN_FILE` | `PLAN.md` | Plan path, carried through every phase |
 | `log` / `LOG_FILE` | `PLAN-REVIEW-LOG.md` | Append-only decision log |
 | `builder` | current host | `claude` or `cursor` |
-| `reviewer_model`, `builder_model`, `inspector_model` | Cursor: `$CLAUDOR_CURSOR_MODEL`, else `composer-2.5` (review, build) / `grok-4.7-high` (inspect); Claude: CLI configuration | Per-role model override |
+| `reviewer_model`, `builder_model`, `inspector_model` | Cursor: `$CLAUDOR_CURSOR_<ROLE>_MODEL`, then `$CLAUDOR_CURSOR_MODEL`, then `composer-2.5`; Claude: CLI configuration | Per-role model override |
 | `reviewer_effort`, `builder_effort`, `inspector_effort` | Claude CLI configuration | Claude only; Cursor effort is in the model id |
 | `rounds` / `MAX_ROUNDS` | `5` | Completed plan-review round cap |
 | `MAX_FIX_ROUNDS` | `2` | Build-fix attempt cap |

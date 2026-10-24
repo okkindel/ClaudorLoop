@@ -19,11 +19,13 @@ import uuid
 
 PROVIDERS = ("claude", "cursor")
 EXECUTABLES = {"claude": ("claude",), "cursor": ("cursor-agent", "agent")}
-# Both are in Cursor's included pool. Composer keeps review rounds and builds fast; the final
-# code inspection gets Grok 4.7 High, which found subtler defects live. CLAUDOR_CURSOR_MODEL
-# overrides every mode.
-DEFAULT_CURSOR_MODELS = {"review": "composer-2.5", "build": "composer-2.5", "inspect": "grok-4.7-high"}
+# Composer is in Cursor's included pool and keeps rounds to about a minute; Grok 4.7 High found
+# subtler defects but took 5-45 minutes per review, so it is opt-in. Lookup order: --model,
+# the role's variable, the shared variable, the default.
+DEFAULT_CURSOR_MODEL = "composer-2.5"
 CURSOR_MODEL_ENV = "CLAUDOR_CURSOR_MODEL"
+CURSOR_ROLE_MODEL_ENV = {"review": "CLAUDOR_CURSOR_REVIEW_MODEL", "build": "CLAUDOR_CURSOR_BUILD_MODEL",
+                         "inspect": "CLAUDOR_CURSOR_INSPECT_MODEL"}
 # Cursor can route to Anthropic models, which would make "independent" review Claude
 # reviewing Claude. Router aliases hide the model actually used.
 ANTHROPIC_MODEL = re.compile(r"claude|sonnet|opus|haiku|fable", re.I)
@@ -100,8 +102,11 @@ def resolve_model(provider: str, mode: str, model: str | None,
     """Return the model to request and where it came from; Claude keeps its CLI default."""
     if provider != "cursor":
         return model, "argument" if model else "CLI default (unresolved)"
-    source = "argument" if model else "env" if os.environ.get(CURSOR_MODEL_ENV) else "default"
-    model = model or os.environ.get(CURSOR_MODEL_ENV) or DEFAULT_CURSOR_MODELS[mode]
+    source = "argument"
+    if not model:
+        name = next((n for n in (CURSOR_ROLE_MODEL_ENV[mode], CURSOR_MODEL_ENV)
+                     if os.environ.get(n, "").strip()), None)
+        model, source = (os.environ[name].strip(), name) if name else (DEFAULT_CURSOR_MODEL, "default")
     if ANTHROPIC_MODEL.search(model):
         raise RunError(f"Cursor model {model} is an Anthropic model; the Cursor side must not be Claude. "
                        "Choose e.g. grok-4.7-high, composer-2.5 or a GPT model.")
@@ -519,8 +524,8 @@ def main(argv=None) -> int:
     parser.add_argument("--repo", default=".")
     parser.add_argument("--plan", default="PLAN.md")
     parser.add_argument("--model", help="Explicit model override. Omitted: Claude uses its CLI default; "
-                        f"Cursor uses ${CURSOR_MODEL_ENV}, else composer-2.5 (review, build) "
-                        "or grok-4.7-high (inspect).")
+                        "Cursor uses $CLAUDOR_CURSOR_<ROLE>_MODEL, then "
+                        f"${CURSOR_MODEL_ENV}, then {DEFAULT_CURSOR_MODEL}.")
     parser.add_argument("--allow-unverified-model", action="store_true",
                         help="Allow a Cursor router model (auto) whose actual model cannot be verified.")
     parser.add_argument("--allow-cursor-mcp", action="store_true",

@@ -68,7 +68,7 @@ The runner launches the CLI (`cursor-agent` or `agent` on PATH), not the Cursor 
 From GitHub:
 
 ```text
-/plugin marketplace add okkindel/claudor-loop
+/plugin marketplace add okkindel/ClaudorLoop
 /plugin install claudor-loop@claudor-loop
 ```
 
